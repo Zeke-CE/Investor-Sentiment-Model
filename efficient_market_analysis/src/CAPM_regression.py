@@ -1,8 +1,9 @@
-import statsmodels.api as sm #(change to the version from jacob (gmail))
+import statsmodels.api as sm 
 
 
 
 def fit_ols(dataframe, outcome_var, independent_var):
+
     y = dataframe[outcome_var]
     x = dataframe[independent_var]
     x = sm.add_constant(x)  

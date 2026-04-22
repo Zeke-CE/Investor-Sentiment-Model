@@ -1,22 +1,23 @@
 import numpy as np
 import pandas as pd
-import warnings
 
 
 def calculate_sentiment_signal(sentiment_scores, threshold=0):
     
     '''
+
     Generate trading signals based on sentiment scores.
     
     Parameters:
-    - sentiment_scores: A pandas Series of sentiment scores.
-    - threshold: A float value above which we take a long position, and below which we take a short position.
+    - sentiment_scores: Series of sentiment scores.
+    - threshold: Sentiment spread threshold before we take a side.
     
     Returns:
-    - A pandas Series of trading signals: +1 for long, -1 for short, and 0 for no position.
+    - Series of sentiment signals: +1 = long, -1 = short, 0 = no position
+
     '''
     
-    # +1 = long, -1 = short, 0 = no position
+
     signal = np.select(
         [sentiment_scores > threshold, sentiment_scores < -threshold],
         [1, -1],
@@ -25,43 +26,66 @@ def calculate_sentiment_signal(sentiment_scores, threshold=0):
     
     return signal
 
-def calculate_return(signal, returns, price=None, holding_period='6M'):
+'''
+
+Example use:
+
+signal = pd.Series([1, 0, -1, 0, 0, 1, -1]) #Signal must be 1, 0, or -1. 0s will be turned to NaN's to use with forward fill to represent the holding period not changing. So the signal data must be cleaned properly before passing in so 0s can be replaced accurately
+returns = pd.Series([1, 1, 1, 1,1, 1,1]) #Returns must be aligned to represent forward returns corresponding to the signal at that time
+
+print(calculate_return(signal, returns))
+
+'''
+
+def calculate_return(signal, returns, price=None, contrarian=False):
     
     '''
-    Calculate strategy returns from sentiment signals and forward returns.
+
+    Calculate strategy forward returns from signals and forward returns.
     
     Parameters:
-    - signal: A pandas Series of trading signals (+1, -1, 0).
-    - returns: A pandas Series of asset returns for the evaluation horizon.
-    - price: Unused (kept for backwards compatibility).
-    - holding_period: Included for API compatibility.
+    - signal: A pandas Series of trading signals (+1, -1, 0) (buy, short, hold: for the period).
+    - returns: A pandas Series of returns (for the holding period of the signal data, default: weekly trading so weekly forward asset return).
+    - price: Unused (meant for price based calculations).
+    - contrarian: Indicated contrarian strategy where signals are inverted (performs better).
     
     Returns:
     - A pandas Series of strategy returns.
+
     '''
 
-    if holding_period not in {'6M', '1M', '1W'}:
-        raise ValueError("Invalid holding period. Use '6M', '1M', or '1W'.")
 
-    signal_series = pd.Series(signal, copy=False)
-    returns_series = pd.Series(returns, copy=False)
 
-    # Align on a common index.
-    aligned = pd.concat([signal_series, returns_series], axis=1)
-    aligned.columns = ['signal', 'returns']
-
-    non_null_signal = aligned['signal'].dropna()
-    if not non_null_signal.isin([-1, 0, 1]).all():
+    #added these checks to ensure that strategy data isnt polluted
+    if signal.isna().any():
+        raise ValueError("Ensure Signal does not contain NaN values. Pass in cleaned signal and retruns series. They need to be aligned as needed before passing.")
+    
+    elif returns.isna().any():
+        raise ValueError("Ensure Returns does not contain NaN values. Pass in cleaned signal and retruns series. They need to be aligned as needed before passing.")
+    
+    elif not signal.isin([-1, 0, 1]).all():
         raise ValueError("Signal must only contain -1, 0, or 1 values.")
 
-    if aligned[['signal', 'returns']].isna().any().any():
-        warnings.warn("NaN detected in signal/returns; using flat signal for missing signal and preserving NaN returns.", RuntimeWarning, stacklevel=2)
-    aligned['returns'] = pd.to_numeric(aligned['returns'], errors='coerce')
-    signal_clean = aligned['signal'].fillna(0.0)
+
+    if contrarian:
+        signal = -signal
 
     # Trading rule:
-    # spread > 0 -> long (+1), spread < 0 -> short (-1), spread == 0 -> keep prior position.
-    position = signal_clean.replace(0, np.nan).ffill().fillna(0.0)
-    strategy_returns = position * aligned['returns']
+    # spread > threshold -> long (+1), spread < -threshold -> short (-1), -threshold < spread < threshold -> keep prior position.
+    position = signal.replace(0, np.nan).ffill() #forward fill 0 with prior number (this should recreate strategy)
+    strategy_returns = position * returns #Multiply the forward return time the position (signal) for that period
 
     return strategy_returns
+
+
+def multiple_return(dataframe, signals, returns):
+
+    results = {}
+
+    for s, r in zip(signals, returns):
+
+        
+
+        results[s.split('_')[0]] = calculate_return(dataframe[s], dataframe[r], price=None, contrarian=False).fillna(0)
+
+    return pd.DataFrame.from_dict(results)

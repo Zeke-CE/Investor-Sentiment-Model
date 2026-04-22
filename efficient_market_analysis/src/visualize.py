@@ -3,6 +3,20 @@ import seaborn as sns
 import numpy as np
 
 
+def plot_returns(dataframe, returns, ax):
+    plt.figure(figsize=(12,6))
+
+
+    cummulative_return = (1+ dataframe[returns]).cumprod() - 1
+
+    sns.lineplot(data=dataframe, x='Date', y=cummulative_return, label= returns, ax=ax)
+
+
+
+    return ax
+
+
+
 def plot_correlation_matrix(dataframe, columns, ax):
     
     correlation_matrix = dataframe[columns].corr(method='pearson')
